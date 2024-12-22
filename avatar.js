@@ -134,6 +134,12 @@ class Avatar {
         this.rightHand.add(this.rightGrip);
     }
 
+    setHeadVisibility(visible) {
+        if (this.head) {
+            this.head.visible = visible;
+        }
+    }
+
     updatePositions(headPos, leftHandPos, rightHandPos, leftHandRot, rightHandRot, leftGrip, rightGrip, headRotation) {
         if (headPos) {
             this.head.position.copy(headPos);

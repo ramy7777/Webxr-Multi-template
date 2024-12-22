@@ -48,6 +48,7 @@ function init() {
     
     // Create local avatar
     localAvatar = new Avatar();
+    localAvatar.setHeadVisibility(false); // Hide head for local player
     scene.add(localAvatar.container);
     
     // Setup VR controllers
