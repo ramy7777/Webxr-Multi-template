@@ -138,7 +138,9 @@ class Avatar {
         if (headPos) {
             this.head.position.copy(headPos);
             if (headRotation) {
-                this.head.quaternion.copy(headRotation);
+                // Apply 180-degree rotation around Y-axis
+                const rotationY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+                this.head.quaternion.copy(headRotation).multiply(rotationY);
             }
         }
         if (leftHandPos && leftHandRot) {
