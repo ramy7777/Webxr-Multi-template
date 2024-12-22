@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+import { Avatar } from './avatar.js';
 
 let scene, camera, renderer;
 let controllers = [];
@@ -8,10 +9,17 @@ let peer;
 let connection;
 let isHost = false;
 let availableRooms = new Set();
-const DISCOVERY_SERVER_ID = 'webxr-discovery-1234'; // Fixed discovery server ID
+const DISCOVERY_SERVER_ID = 'webxr-discovery-1234';
 let discoveryServer = null;
 let discoveryConnection = null;
-const players = new Map(); // Store other players' data
+let isConnectingToDiscovery = false;
+const players = new Map();
+
+// Avatar-related variables
+let localAvatar;
+const remoteAvatars = new Map();
+let lastUpdateTime = 0;
+const UPDATE_RATE = 1000 / 60; // 60 updates per second for smoother movement
 
 // Initialize Three.js scene
 function init() {
@@ -22,27 +30,35 @@ function init() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
-    document.body.appendChild(VRButton.createButton(renderer));
-
+    
     // Add lights
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
+    
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(1, 1, 1);
     scene.add(directionalLight);
 
     // Add a floor
-    const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(10, 10),
-        new THREE.MeshStandardMaterial({ color: 0x808080 })
-    );
+    const floorGeometry = new THREE.PlaneGeometry(10, 10);
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
-
+    
+    // Create local avatar
+    localAvatar = new Avatar();
+    scene.add(localAvatar.container);
+    
+    // Setup VR controllers
     setupControllers();
     setupNetwork();
 
     camera.position.set(0, 1.6, 3);
+    
+    document.body.appendChild(VRButton.createButton(renderer));
+    
+    window.addEventListener('resize', onWindowResize, false);
 }
 
 // Set up VR controllers
@@ -383,8 +399,41 @@ function setupConnectionHandlers() {
     });
 
     connection.on('data', (data) => {
-        handlePeerData(data);
+        if (data.type === 'avatar-update') {
+            handleAvatarUpdate(connection.peer, data);
+        } else if (data.type === 'controller') {
+            updateRemoteController(data);
+        }
     });
+
+    connection.on('close', () => {
+        console.log('Connection closed');
+        removeRemoteAvatar(connection.peer);
+    });
+}
+
+function handleAvatarUpdate(peerId, data) {
+    let avatar = remoteAvatars.get(peerId);
+    if (!avatar) {
+        avatar = new Avatar();
+        avatar.container.position.z = -2; // Position remote avatar in front
+        scene.add(avatar.container);
+        remoteAvatars.set(peerId, avatar);
+    }
+    
+    const headPos = new THREE.Vector3().fromArray(data.head);
+    const leftHandPos = new THREE.Vector3().fromArray(data.leftHand);
+    const rightHandPos = new THREE.Vector3().fromArray(data.rightHand);
+    
+    avatar.updatePositions(headPos, leftHandPos, rightHandPos);
+}
+
+function removeRemoteAvatar(peerId) {
+    const avatar = remoteAvatars.get(peerId);
+    if (avatar) {
+        scene.remove(avatar.container);
+        remoteAvatars.delete(peerId);
+    }
 }
 
 function broadcastControllerState(controllerIndex, isSelecting) {
@@ -427,24 +476,42 @@ function updateRemoteController(data) {
 
 // Animation loop
 function animate() {
-    renderer.setAnimationLoop(() => {
-        // Update controller positions
-        controllers.forEach((controllerSet, index) => {
-            if (connection && connection.open) {
-                broadcastControllerState(index, controllerSet.controller.userData.isSelecting);
-            }
-        });
+    renderer.setAnimationLoop(render);
+}
 
-        renderer.render(scene, camera);
-    });
+function render(timestamp) {
+    if (renderer.xr.isPresenting) {
+        // Update local avatar positions
+        const headPos = camera.position;
+        const leftHandPos = controllers[0].controller.position;
+        const rightHandPos = controllers[1].controller.position;
+        
+        localAvatar.updatePositions(headPos, leftHandPos, rightHandPos);
+        
+        // Send position updates to peers at fixed rate
+        if (timestamp - lastUpdateTime > UPDATE_RATE) {
+            if (connection) {
+                const positionData = {
+                    type: 'avatar-update',
+                    head: headPos.toArray(),
+                    leftHand: leftHandPos.toArray(),
+                    rightHand: rightHandPos.toArray()
+                };
+                connection.send(positionData);
+            }
+            lastUpdateTime = timestamp;
+        }
+    }
+    
+    renderer.render(scene, camera);
 }
 
 // Handle window resize
-window.addEventListener('resize', () => {
+function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
 
 // Start the application
 init();
