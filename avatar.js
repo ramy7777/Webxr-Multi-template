@@ -77,26 +77,34 @@ class Avatar {
 
         // Create palm for each hand
         const palmGeometry = new THREE.BoxGeometry(0.08, 0.02, 0.12);
+        
+        // Adjust palm orientation to match controller grip
         const leftPalm = new THREE.Mesh(palmGeometry, handMaterial);
+        leftPalm.rotation.set(0, 0, -Math.PI / 2); // Rotate to match grip orientation
+        leftPalm.position.set(0, 0, -0.05); // Move palm forward
+        
         const rightPalm = new THREE.Mesh(palmGeometry, handMaterial);
+        rightPalm.rotation.set(0, 0, Math.PI / 2); // Mirror rotation for right hand
+        rightPalm.position.set(0, 0, -0.05); // Move palm forward
 
         this.leftHand.add(leftPalm);
         this.rightHand.add(rightPalm);
 
-        // Create fingers
+        // Create fingers with adjusted positions
         const fingerGeometry = new THREE.BoxGeometry(0.01, 0.01, 0.03);
         const fingerPositions = [
-            [-0.03, 0.01, -0.04], // Thumb
-            [-0.02, 0.01, -0.05], // Index
-            [0, 0.01, -0.05],     // Middle
-            [0.02, 0.01, -0.05],  // Ring
-            [0.04, 0.01, -0.05]   // Pinky
+            [-0.03, 0.01, -0.08], // Thumb
+            [-0.02, 0.01, -0.09], // Index
+            [0, 0.01, -0.09],     // Middle
+            [0.02, 0.01, -0.09],  // Ring
+            [0.04, 0.01, -0.09]   // Pinky
         ];
 
         // Add fingers to left hand
         fingerPositions.forEach(pos => {
             const finger = new THREE.Mesh(fingerGeometry, handMaterial);
             finger.position.set(...pos);
+            finger.rotation.set(0, 0, -Math.PI / 2); // Align with palm
             this.leftHand.add(finger);
         });
 
@@ -104,6 +112,7 @@ class Avatar {
         fingerPositions.forEach(pos => {
             const finger = new THREE.Mesh(fingerGeometry, handMaterial);
             finger.position.set(-pos[0], pos[1], pos[2]); // Mirror X position
+            finger.rotation.set(0, 0, Math.PI / 2); // Mirror rotation
             this.rightHand.add(finger);
         });
 
@@ -117,6 +126,10 @@ class Avatar {
         this.leftGrip.visible = false;
         this.rightGrip.visible = false;
         
+        // Position grip indicators at fingertips
+        this.leftGrip.position.set(0, 0, -0.09);
+        this.rightGrip.position.set(0, 0, -0.09);
+        
         this.leftHand.add(this.leftGrip);
         this.rightHand.add(this.rightGrip);
     }
@@ -125,20 +138,16 @@ class Avatar {
         if (headPos) {
             this.head.position.copy(headPos);
         }
-        if (leftHandPos) {
+        if (leftHandPos && leftHandRot) {
             this.leftHand.position.copy(leftHandPos);
-            if (leftHandRot) {
-                this.leftHand.quaternion.copy(leftHandRot);
-            }
+            this.leftHand.quaternion.copy(leftHandRot);
             if (this.leftGrip) {
                 this.leftGrip.visible = leftGrip;
             }
         }
-        if (rightHandPos) {
+        if (rightHandPos && rightHandRot) {
             this.rightHand.position.copy(rightHandPos);
-            if (rightHandRot) {
-                this.rightHand.quaternion.copy(rightHandRot);
-            }
+            this.rightHand.quaternion.copy(rightHandRot);
             if (this.rightGrip) {
                 this.rightGrip.visible = rightGrip;
             }

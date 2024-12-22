@@ -65,20 +65,40 @@ function init() {
 function setupControllers() {
     const controllerModelFactory = new XRControllerModelFactory();
 
-    for (let i = 0; i < 2; i++) {
-        const controller = renderer.xr.getController(i);
-        controller.userData.index = i;
-        scene.add(controller);
+    // Setup controllers array to store both controller and grip references
+    controllers = [
+        {
+            controller: renderer.xr.getController(0),
+            grip: renderer.xr.getControllerGrip(0),
+            model: null
+        },
+        {
+            controller: renderer.xr.getController(1),
+            grip: renderer.xr.getControllerGrip(1),
+            model: null
+        }
+    ];
 
-        const grip = renderer.xr.getControllerGrip(i);
-        grip.add(controllerModelFactory.createControllerModel(grip));
-        scene.add(grip);
+    // Setup each controller
+    controllers.forEach((controllerSet, index) => {
+        // Add controller for ray and events
+        controllerSet.controller.addEventListener('selectstart', () => {
+            controllerSet.controller.userData.isSelecting = true;
+            broadcastControllerState(index, true);
+        });
 
-        controllers.push({ controller, grip });
+        controllerSet.controller.addEventListener('selectend', () => {
+            controllerSet.controller.userData.isSelecting = false;
+            broadcastControllerState(index, false);
+        });
 
-        controller.addEventListener('selectstart', onSelectStart);
-        controller.addEventListener('selectend', onSelectEnd);
-    }
+        scene.add(controllerSet.controller);
+
+        // Add grip for visual representation
+        controllerSet.model = controllerModelFactory.createControllerModel(controllerSet.grip);
+        controllerSet.grip.add(controllerSet.model);
+        scene.add(controllerSet.grip);
+    });
 }
 
 // Controller event handlers
@@ -153,6 +173,66 @@ function handleIncomingConnection(conn) {
     } else if (discoveryServer) {
         // If we're the discovery server, handle discovery protocol
         handleDiscoveryConnection(conn);
+    }
+}
+
+function setupConnectionHandlers() {
+    connection.on('open', () => {
+        console.log('Connected to peer:', connection.peer);
+    });
+
+    connection.on('data', (data) => {
+        if (data.type === 'avatar-update') {
+            handleAvatarUpdate(connection.peer, data);
+        } else if (data.type === 'controller') {
+            handleControllerUpdate(connection.peer, data);
+        }
+    });
+
+    connection.on('close', () => {
+        console.log('Connection closed');
+        removeRemoteAvatar(connection.peer);
+    });
+}
+
+function handleAvatarUpdate(peerId, data) {
+    let avatar = remoteAvatars.get(peerId);
+    if (!avatar) {
+        // Create avatar with a different color for each peer
+        const peerColor = new THREE.Color().setHSL(Math.random(), 0.8, 0.6);
+        avatar = new Avatar(peerColor);
+        scene.add(avatar.container);
+        remoteAvatars.set(peerId, avatar);
+        console.log('Created new remote avatar for peer:', peerId);
+    }
+
+    // Convert arrays back to Three.js objects
+    const headPos = new THREE.Vector3().fromArray(data.head);
+    const leftHandPos = new THREE.Vector3().fromArray(data.leftHand);
+    const rightHandPos = new THREE.Vector3().fromArray(data.rightHand);
+    const leftHandRot = new THREE.Quaternion().fromArray(data.leftHandRot);
+    const rightHandRot = new THREE.Quaternion().fromArray(data.rightHandRot);
+
+    // Update avatar positions and rotations
+    avatar.updatePositions(
+        headPos,
+        leftHandPos,
+        rightHandPos,
+        leftHandRot,
+        rightHandRot,
+        data.leftGrip,
+        data.rightGrip
+    );
+}
+
+function handleControllerUpdate(peerId, data) {
+    const avatar = remoteAvatars.get(peerId);
+    if (avatar) {
+        if (data.index === 0) {
+            avatar.leftGrip.visible = data.isSelecting;
+        } else {
+            avatar.rightGrip.visible = data.isSelecting;
+        }
     }
 }
 
@@ -393,41 +473,6 @@ function joinGame(roomId) {
     }
 }
 
-function setupConnectionHandlers() {
-    connection.on('open', () => {
-        console.log('Connected to peer');
-    });
-
-    connection.on('data', (data) => {
-        if (data.type === 'avatar-update') {
-            handleAvatarUpdate(connection.peer, data);
-        } else if (data.type === 'controller') {
-            updateRemoteController(data);
-        }
-    });
-
-    connection.on('close', () => {
-        console.log('Connection closed');
-        removeRemoteAvatar(connection.peer);
-    });
-}
-
-function handleAvatarUpdate(peerId, data) {
-    let avatar = remoteAvatars.get(peerId);
-    if (!avatar) {
-        avatar = new Avatar();
-        avatar.container.position.z = -2; // Position remote avatar in front
-        scene.add(avatar.container);
-        remoteAvatars.set(peerId, avatar);
-    }
-    
-    const headPos = new THREE.Vector3().fromArray(data.head);
-    const leftHandPos = new THREE.Vector3().fromArray(data.leftHand);
-    const rightHandPos = new THREE.Vector3().fromArray(data.rightHand);
-    
-    avatar.updatePositions(headPos, leftHandPos, rightHandPos);
-}
-
 function removeRemoteAvatar(peerId) {
     const avatar = remoteAvatars.get(peerId);
     if (avatar) {
@@ -441,37 +486,15 @@ function broadcastControllerState(controllerIndex, isSelecting) {
         connection.send({
             type: 'controller',
             index: controllerIndex,
-            position: controllers[controllerIndex].controller.position.toArray(),
-            rotation: controllers[controllerIndex].controller.rotation.toArray(),
-            isSelecting
+            isSelecting: isSelecting
         });
     }
 }
 
 function handlePeerData(data) {
     if (data.type === 'controller') {
-        updateRemoteController(data);
+        handleControllerUpdate(connection.peer, data);
     }
-}
-
-function updateRemoteController(data) {
-    let remoteController = players.get(data.index);
-    
-    if (!remoteController) {
-        // Create new remote controller representation
-        const geometry = new THREE.BoxGeometry(0.08, 0.08, 0.2);
-        const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-        remoteController = new THREE.Mesh(geometry, material);
-        scene.add(remoteController);
-        players.set(data.index, remoteController);
-    }
-
-    // Update remote controller position and rotation
-    remoteController.position.fromArray(data.position);
-    remoteController.rotation.fromArray(data.rotation);
-    
-    // Visual feedback for selection
-    remoteController.material.color.setHex(data.isSelecting ? 0x00ff00 : 0xff0000);
 }
 
 // Animation loop
@@ -481,24 +504,44 @@ function animate() {
 
 function render(timestamp) {
     if (renderer.xr.isPresenting) {
-        // Update local avatar positions
-        const headPos = camera.position;
-        const leftHandPos = controllers[0].controller.position;
-        const rightHandPos = controllers[1].controller.position;
+        // Get XR camera position for head
+        const xrCamera = renderer.xr.getCamera();
+        const headPos = xrCamera.position;
+
+        // Get controller positions and rotations
+        const leftController = controllers[0].controller;
+        const rightController = controllers[1].controller;
         
-        localAvatar.updatePositions(headPos, leftHandPos, rightHandPos);
+        // Get controller grip for better hand positioning
+        const leftGrip = controllers[0].grip;
+        const rightGrip = controllers[1].grip;
+
+        // Update local avatar
+        if (localAvatar) {
+            localAvatar.updatePositions(
+                headPos,
+                leftGrip.position,
+                rightGrip.position,
+                leftGrip.quaternion,
+                rightGrip.quaternion,
+                leftController.userData.isSelecting || false,
+                rightController.userData.isSelecting || false
+            );
+        }
         
         // Send position updates to peers at fixed rate
-        if (timestamp - lastUpdateTime > UPDATE_RATE) {
-            if (connection) {
-                const positionData = {
-                    type: 'avatar-update',
-                    head: headPos.toArray(),
-                    leftHand: leftHandPos.toArray(),
-                    rightHand: rightHandPos.toArray()
-                };
-                connection.send(positionData);
-            }
+        if (connection && connection.open && timestamp - lastUpdateTime > UPDATE_RATE) {
+            const positionData = {
+                type: 'avatar-update',
+                head: headPos.toArray(),
+                leftHand: leftGrip.position.toArray(),
+                rightHand: rightGrip.position.toArray(),
+                leftHandRot: leftGrip.quaternion.toArray(),
+                rightHandRot: rightGrip.quaternion.toArray(),
+                leftGrip: leftController.userData.isSelecting || false,
+                rightGrip: rightController.userData.isSelecting || false
+            };
+            connection.send(positionData);
             lastUpdateTime = timestamp;
         }
     }
