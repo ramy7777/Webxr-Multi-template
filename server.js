@@ -1,6 +1,11 @@
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import os from 'os';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const options = {
     key: fs.readFileSync(path.join(__dirname, 'key.pem')),
@@ -45,21 +50,17 @@ const handler = function (req, res) {
 };
 
 const server = https.createServer(options, handler);
-const port = 8443;
+const port = 8080;
 
 server.listen(port, () => {
-    const interfaces = require('os').networkInterfaces();
-    let ipAddress = '';
-    
-    // Find the IPv4 address
-    Object.keys(interfaces).forEach((interfaceName) => {
-        interfaces[interfaceName].forEach((interface) => {
-            if (interface.family === 'IPv4' && !interface.internal) {
-                ipAddress = interface.address;
+    const interfaces = os.networkInterfaces();
+    console.log(`Server running at:`);
+    Object.keys(interfaces).forEach((iface) => {
+        interfaces[iface].forEach((details) => {
+            if (details.family === 'IPv4') {
+                console.log(`  https://${details.address}:${port}`);
             }
         });
     });
-    
-    console.log(`Server running at https://localhost:${port}/`);
-    console.log(`Access from Quest browser at https://${ipAddress}:${port}/`);
+    console.log(`  https://localhost:${port}`);
 });
