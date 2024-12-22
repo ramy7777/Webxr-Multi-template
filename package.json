@@ -1,0 +1,14 @@
+{
+  "name": "webxr-quest-multiplayer",
+  "version": "1.0.0",
+  "description": "WebXR Multiplayer Application",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "cert": "node scripts/create-cert.js",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "selfsigned": "^2.1.1"
+  }
+}

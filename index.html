@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebXR Multiplayer</title>
+    <style>
+        body { margin: 0; }
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            min-width: 300px;
+        }
+        #roomId {
+            display: none;
+            margin: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        #joinMenu {
+            display: none;
+            margin: 10px 0;
+        }
+        input {
+            padding: 8px;
+            margin: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            text-align: center;
+            width: 120px;
+        }
+        .back-button {
+            background: #666;
+            font-size: 14px;
+            padding: 8px 16px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 18px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <h2>WebXR Multiplayer</h2>
+        <div id="mainMenu">
+            <button id="hostButton">Host Game</button>
+            <button id="joinWithIdButton">Join with ID</button>
+            <button id="quickJoinButton">Quick Join</button>
+        </div>
+        <div id="joinMenu">
+            <input type="text" id="roomIdInput" maxlength="4" placeholder="Enter Room ID">
+            <button id="joinButton">Join</button>
+            <button id="backButton" class="back-button">Back</button>
+        </div>
+        <div id="roomId"></div>
+    </div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
