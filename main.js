@@ -208,6 +208,7 @@ function handleAvatarUpdate(peerId, data) {
 
     // Convert arrays back to Three.js objects
     const headPos = new THREE.Vector3().fromArray(data.head);
+    const headRot = new THREE.Quaternion().fromArray(data.headRot);
     const leftHandPos = new THREE.Vector3().fromArray(data.leftHand);
     const rightHandPos = new THREE.Vector3().fromArray(data.rightHand);
     const leftHandRot = new THREE.Quaternion().fromArray(data.leftHandRot);
@@ -221,7 +222,8 @@ function handleAvatarUpdate(peerId, data) {
         leftHandRot,
         rightHandRot,
         data.leftGrip,
-        data.rightGrip
+        data.rightGrip,
+        headRot
     );
 }
 
@@ -497,6 +499,90 @@ function handlePeerData(data) {
     }
 }
 
+function handleController(controller, index) {
+    if (!controller.gamepad) return;
+
+    const gamepad = controller.gamepad;
+    const thumbstick = gamepad.axes;
+
+    // Left thumbstick for movement (index 0)
+    if (index === 0) {
+        // Only process if thumbstick is beyond deadzone
+        if (Math.abs(thumbstick[2]) > THUMBSTICK_DEADZONE || Math.abs(thumbstick[3]) > THUMBSTICK_DEADZONE) {
+            // Get the camera's forward and right vectors for movement relative to view
+            const xrCamera = renderer.xr.getCamera();
+            const forward = new THREE.Vector3();
+            const right = new THREE.Vector3();
+            
+            // Extract the forward and right vectors from the camera's matrix
+            forward.setFromMatrixColumn(xrCamera.matrix, 2);
+            right.setFromMatrixColumn(xrCamera.matrix, 0);
+            
+            // Zero out y components to keep movement horizontal
+            forward.y = 0;
+            right.y = 0;
+            forward.normalize();
+            right.normalize();
+
+            // Calculate movement
+            const moveX = -thumbstick[2] * MOVEMENT_SPEED;
+            const moveZ = -thumbstick[3] * MOVEMENT_SPEED;
+
+            // Apply movement
+            camera.position.addScaledVector(right, moveX);
+            camera.position.addScaledVector(forward, moveZ);
+
+            // Haptic feedback for movement
+            if (gamepad.hapticActuators && gamepad.hapticActuators.length > 0) {
+                const intensity = Math.min(
+                    Math.sqrt(moveX * moveX + moveZ * moveZ) / MOVEMENT_SPEED,
+                    1.0
+                ) * HAPTIC_INTENSITY.movement;
+                gamepad.hapticActuators[0].pulse(intensity, HAPTIC_DURATION.movement);
+            }
+
+            // Broadcast movement to peers
+            if (connection && connection.open) {
+                connection.send({
+                    type: 'movement',
+                    position: camera.position.toArray()
+                });
+            }
+        }
+    }
+    // Right thumbstick for snap rotation (index 1)
+    else if (index === 1) {
+        // Check for horizontal thumbstick movement beyond deadzone
+        if (Math.abs(thumbstick[2]) > THUMBSTICK_DEADZONE) {
+            // Store the last rotation time to prevent too frequent rotations
+            const now = performance.now();
+            if (!controller.userData.lastRotationTime || now - controller.userData.lastRotationTime > 250) {
+                // Determine rotation direction
+                const rotationDirection = thumbstick[2] > 0 ? 1 : -1;
+                
+                // Apply rotation to the camera
+                camera.rotation.y += SNAP_ROTATION_ANGLE * rotationDirection;
+
+                // Haptic feedback for rotation
+                if (gamepad.hapticActuators && gamepad.hapticActuators.length > 0) {
+                    gamepad.hapticActuators[0].pulse(HAPTIC_INTENSITY.rotation, HAPTIC_DURATION.rotation);
+                }
+
+                // Update last rotation time
+                controller.userData.lastRotationTime = now;
+
+                // Broadcast rotation to peers
+                if (connection && connection.open) {
+                    connection.send({
+                        type: 'rotation',
+                        rotation: camera.rotation.toArray()
+                    });
+                }
+            }
+        }
+    }
+}
+
 // Animation loop
 function animate() {
     renderer.setAnimationLoop(render);
@@ -525,7 +611,8 @@ function render(timestamp) {
                 leftGrip.quaternion,
                 rightGrip.quaternion,
                 leftController.userData.isSelecting || false,
-                rightController.userData.isSelecting || false
+                rightController.userData.isSelecting || false,
+                xrCamera.quaternion
             );
         }
         
@@ -534,6 +621,7 @@ function render(timestamp) {
             const positionData = {
                 type: 'avatar-update',
                 head: headPos.toArray(),
+                headRot: xrCamera.quaternion.toArray(),
                 leftHand: leftGrip.position.toArray(),
                 rightHand: rightGrip.position.toArray(),
                 leftHandRot: leftGrip.quaternion.toArray(),
@@ -544,6 +632,11 @@ function render(timestamp) {
             connection.send(positionData);
             lastUpdateTime = timestamp;
         }
+
+        // Handle controller input for movement and rotation
+        controllers.forEach((controllerSet, index) => {
+            handleController(controllerSet.controller, index);
+        });
     }
     
     renderer.render(scene, camera);
